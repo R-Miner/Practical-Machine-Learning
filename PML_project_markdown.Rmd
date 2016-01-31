@@ -1,0 +1,133 @@
+---
+title: "Practical Machine Learning Project"
+output: html_document
+---
+##INTRODUCTION
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement ??? a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+
+In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. 
+
+##GOAL
+
+The goal of this project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. We could use any of the other variables to predict with.
+
+##PROCEDURAL STEPS
+* Download and read the training and test datasets
+* Cleaning and preprocessing the datasets
+* Cross Validation
+* Fit the model
+* Justify your fit on why you made the choice
+* Predict model for 20 different test cases
+
+
+###Download and Load Datasets
+
+```{r}
+library(caret)
+
+trainUrl <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+trainFile <- "./dataset/pml-train.csv"
+testFile  <- "./dataset/pml-test.csv"
+if (!file.exists("./dataset")) {
+        dir.create("./dataset")
+}
+if (!file.exists(trainFile)) {
+        download.file(trainUrl, 
+                      destfile=trainFile, 
+                      method="curl")
+}
+if (!file.exists(testFile)) {
+        download.file(testUrl, 
+                      destfile=testFile, 
+                      method="curl")
+}
+
+# Read datasets
+
+trainset <- read.csv("./dataset/pml-train.csv")
+testset <- read.csv("./dataset/pml-test.csv")
+dim(trainset)
+dim(testset)
+```
+
+
+###Cleaning and Preprocessing
+
+```{r}
+# Remove first 7 columns not useful for prediction (timestamps, id ...)
+trainset <- trainset[,8:length(colnames(trainset))]
+testset <- testset[,8:length(colnames(testset))]
+
+# Remove columns with NAs
+trainset <- trainset[, colSums(is.na(trainset)) == 0] 
+testset <- testset[, colSums(is.na(testset)) == 0] 
+
+# Check for near zero variance predictors and remove them if necessary
+nzv <- nearZeroVar(trainset,saveMetrics=TRUE)
+zv<- sum(nzv$nzv)
+
+if ((zv>0)) {
+        trainset <- trainset[,nzv$nzv==FALSE]
+}
+dim(trainset)
+dim(testset)
+
+#Setting seed and dividing training dataset into traing set and validation set
+set.seed(80000)
+train <- createDataPartition(trainset$classe, p=0.80, list = F)
+trainingset<- trainset[train,]
+validationset <- trainset[-train,]
+
+```
+
+### Cross Validation
+Cross validating 10 folds.
+
+```{r}
+trainctrl <- trainControl(method = "cv", number = 10, allowParallel=TRUE)
+```
+
+## Fit the model
+Performing fits on 4 different models.
+
+```{r,cache = FALSE, results = FALSE, warning = FALSE}
+#Model Fits
+rf <- train(classe ~ ., data = trainingset, method = "rf", trControl= trainctrl)
+NN <- train(classe ~ ., data = trainingset, method = "nnet", trControl= trainctrl, verbose=FALSE)
+svml <- train(classe ~ ., data = trainingset, method = "svmLinear", trControl= trainctrl)
+bayesglm <- train(classe ~ ., data = trainingset, method = "bayesglm", trControl= trainctrl)
+
+Models <- c("Random Forest","SVM (linear)","Neural Net", "Bayes GLM")
+Accuracy <- c(max(rf$results$Accuracy),
+              max(NN$results$Accuracy),
+              max(svml$results$Accuracy),
+              max(bayesglm$results$Accuracy))
+
+Kappa <- c(max(rf$results$Kappa),
+           max(NN$results$Kappa),
+           max(svml$results$Kappa),
+           max(bayesglm$results$Kappa))  
+
+performance <- cbind(Models,Accuracy,Kappa)
+```
+knitr::kable(performance)
+
+###Justifying a prediction model
+```{r, warning= FALSE}
+#fit on validation set
+predict <- predict(rf, validationset)
+confusionMatrix(validationset$classe, predict)
+```
+
+The random forest model is the best fit providing an accuracy of 0.99%. The out of sample error is less than 1%. All the other models have a huge difference in the accuracy which concludes that random forest is the best fit.
+
+### Predict model on test dataset
+
+```{r}
+predict <- predict(rf, testset)
+predict
+```
